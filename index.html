@@ -3,175 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تطبيق الجرد المبسط</title>
-    <!-- استدعاء مكتبة قراءة الباركود عن طريق الكاميرا -->
-    <script src="https://unpkg.com"></script>
+    <title>باركود+ — جرد المخزون بالباركود وتصدير Excel</title>
+    <!-- استدعاء المكتبات الضرورية مثل Tailwind CSS وقارئ الباركود المستقر -->
+    <script src="https://tailwindcss.com"></script>
+    <script src="https://cloudflare.com"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; text-align: center; background-color: #f4f4f9; color: #333; }
-        #reader { width: 100%; max-width: 500px; margin: auto; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .form-group { margin: 20px 0; }
-        input, button { padding: 12px; font-size: 16px; margin: 5px; border-radius: 5px; border: 1px solid #ccc; width: 80%; max-width: 300px; }
-        button { background-color: #28a745; color: white; border: none; cursor: pointer; font-weight: bold; }
-        button:hover { background-color: #218838; }
-        table { width: 100%; max-width: 600px; margin: 20px auto; border-collapse: collapse; background: white; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
-        th { background-color: #007bff; color: white; }
-        .delete-btn { background-color: #dc3545; padding: 5px 10px; font-size: 14px; }
-        .delete-btn:hover { background-color: #c82333; }
+        body { background-color: #0b0f17; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
+        .glass-strong { background: rgba(22, 27, 34, 0.9); border: 1px solid #30363d; backdrop-filter: blur(12px); }
+        .glass { background: #161b22; border: 1px solid #21262d; }
+        #reader video { border-radius: 16px; object-fit: cover; }
     </style>
 </head>
-<body>
+<body class="flex flex-col items-center justify-start min-h-screen p-4 sm:p-6 select-none relative">
 
-    <h1>📦 نظام الجرد المبسط</h1>
-    
-    <!-- منطقة كاميرا قراءة الباركود -->
-    <div id="reader"></div>
+    <!-- الإشعارات العلوية (Toast) -->
+    <div id="toast-el" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 glass-strong text-cyan-400 font-bold px-5 py-3 rounded-xl shadow-2xl hidden text-sm transition-all duration-300"></div>
 
-    <!-- نموذج إدخال البيانات -->
-    <div class="form-group">
-        <input type="text" id="barcode-input" placeholder="الباركود المقروء سيظهر هنا" readonly>
-        <br>
-        <input type="number" id="quantity-input" placeholder="أدخل الكمية" min="1" value="1">
-        <br>
-        <button onclick="addItem()">إضافة إلى الجرد</button>
+    <div class="w-full max-w-md mx-auto space-y-5">
+        <!-- الرأس العلوي -->
+        <div class="flex items-center justify-between mt-2">
+            <h1 class="text-xl font-black text-white tracking-tight">باركود+ <span class="text-xs font-normal text-gray-400">جرد المخزون</span></h1>
+            <button onclick="openHistory()" class="text-xs bg-[#21262d] border border-[#30363d] px-3 py-1.5 rounded-lg text-gray-300 hover:bg-[#30363d] transition">📜 سجل الجرد</button>
+        </div>
+
+        <!-- منطقة الكاميرا (Lovable UI) -->
+        <div class="glass rounded-2xl p-4 shadow-xl relative overflow-hidden">
+            <div id="reader" class="w-full min-h-[200px] bg-[#090d13] rounded-xl flex flex-col items-center justify-center text-xs text-gray-500 border-2 border-dashed border-[#30363d]">
+                <span id="camera-status-text" class="mb-1 text-center px-4">اضغط على زر الفتح لبدء استخدام كاميرا المسح التلقائي</span>
+            </div>
+        </div>
+
+        <!-- أزرار التحكم والمسح -->
+        <div class="grid grid-cols-1 gap-2.5">
+            <button id="start-btn" onclick="initLiveScanner()" class="w-full py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl transition duration-200 active:scale-[0.98] text-center shadow-lg text-md">
+                فتح الكاميرا والمسح
+            </button>
+            <label class="w-full py-3 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-gray-300 font-medium rounded-xl transition duration-200 active:scale-[0.98] text-center block cursor-pointer text-xs">
+                📷 التقاط صورة للباركود
+                <input type="file" accept="image/*" class="hidden" onchange="scanFromUploadedFile(this)">
+            </label>
+        </div>
+
+        <!-- لوحة الإدخال والكمية الفعالة -->
+        <div class="glass rounded-2xl p-5 space-y-4 shadow-md">
+            <div>
+                <label class="text-[11px] text-gray-400 font-medium block mb-1 text-right">إدخال يدوي للباركود</label>
+                <input type="text" id="barcode-input" oninput="checkDuplicateInput(this.value)" placeholder="اكتب رمز الباركود" class="w-full py-3 px-4 bg-[#0d1117] border border-[#21262d] rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 transition text-center font-mono tracking-widest text-md">
+                <p id="dup-warning" class="text-[11px] text-yellow-500 text-right mt-1 hidden">⚠️ تنبيه: هذا الباركود ممسوح مسبقاً في هذه الجلسة!</p>
+            </div>
+
+            <div>
+                <label class="text-[11px] text-red-400 mb-1 block text-right font-medium">الكمية الفعالة (أرقام فقط)*</label>
+                <div class="flex items-center space-x-2 space-x-reverse">
+                    <button onclick="stepQuantity(-1)" class="w-12 h-12 bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-white rounded-xl text-xl font-bold active:scale-95 transition">-</button>
+                    <input type="number" id="quantity-input" min="1" value="1" class="flex-1 h-12 bg-[#0d1117] border border-[#21262d] rounded-xl text-center text-xl font-bold text-white focus:outline-none focus:border-cyan-500">
+                    <button onclick="stepQuantity(1)" class="w-12 h-12 bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-white rounded-xl text-xl font-bold active:scale-95 transition">+</button>
+                </div>
+            </div>
+
+            <button onclick="commitItemToInventory()" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition duration-200 active:scale-[0.98] text-sm shadow-md">
+                📥 حفظ في قائمة الجرد
+            </button>
+        </div>
+
+        <!-- أداة التصدير والعدّ الإحصائي -->
+        <div class="glass rounded-2xl p-4 flex items-center justify-between shadow-sm">
+            <div class="text-right">
+                <p class="text-[11px] text-gray-400 font-medium">تصدير الجرد الحالي</p>
+                <p id="inventory-stats" class="text-sm font-bold text-white mt-0.5">0 أسطر · 0 قطعة</p>
+            </div>
+            <button onclick="triggerExportFlow()" class="py-2.5 px-5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-900 font-black rounded-xl transition duration-200 text-xs active:scale-95">
+                تصدير Excel
+            </button>
+        </div>
+
+        <!-- زر مسح البيانات المؤقتة -->
+        <button onclick="flushActiveSession()" class="w-full py-2 bg-transparent hover:bg-red-950/20 text-red-400 border border-red-900/20 rounded-xl transition text-[11px] font-medium">
+            🗑️ مسح الجلسة الحالية وبدء جرد جديد
+        </button>
     </div>
 
-    <hr>
+    <!-- نافذة المسؤول قبل التصدير (Person Modal) -->
+    <div id="person-modal" class="fixed inset-0 z-40 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center hidden">
+        <div class="glass-strong w-full max-w-md rounded-t-[24px] sm:rounded-[24px] p-6 space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-bold text-white">بيانات مسؤول الجرد</h3>
+                <button onclick="closePersonModal()" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div class="space-y-3">
+                <input type="text" id="person-name" placeholder="اسم الموظف المسؤول" class="w-full p-3 bg-[#0d1117] border border-[#21262d] rounded-xl text-white text-sm focus:outline-none">
+                <input type="text" id="person-dept" placeholder="القسم / المستودع" class="w-full p-3 bg-[#0d1117] border border-[#21262d] rounded-xl text-white text-sm focus:outline-none">
+            </div>
+            <button onclick="submitExportFlow()" class="w-full py-3 bg-cyan-500 text-slate-900 font-bold rounded-xl text-sm">تأكيد وتنزيل ملف Excel</button>
+        </div>
+    </div>
 
-    <!-- جدول عرض المواد المجرودة -->
-    <h2>قائمة المواد المجرودة</h2>
-    <button onclick="exportToCSV()" style="background-color: #17a2b8; width: auto;">📥 تحميل كملف Excel (CSV)</button>
-    <button onclick="clearAllData()" style="background-color: #6c757d; width: auto; margin-right: 10px;">🗑️ مسح كل البيانات</button>
-    
-    <table>
-        <thead>
-            <tr>
-                <th>الباركود</th>
-                <th>الكمية</th>
-                <th>الوقت</th>
-                <th>إجراء</th>
-            </tr>
-        </thead>
-        <tbody id="inventory-table-body">
-            <!-- البيانات ستظهر هنا ديناميكياً -->
-        </tbody>
-    </table>
+    <!-- لوحة سجل الجرد لآخر 48 ساعة (History Panel) -->
+    <div id="history-panel" class="fixed inset-0 z-40 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center hidden">
+        <div class="glass-strong w-full max-w-md rounded-t-[24px] sm:rounded-[24px] p-6 max-h-[80vh] overflow-y-auto space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-white">سجل الجرد</h3>
+                    <p class="text-[10px] text-gray-400 mt-0.5">الملفات المصدرة خلال آخر 48 ساعة تلقائياً.</p>
+                </div>
+                <button onclick="closeHistory()" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div id="history-list" class="space-y-3">
+                <!-- تعبئة السجل ديناميكياً هنا -->
+            </div>
+        </div>
+    </div>
 
     <script>
-        let inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+        const KEY = "barcode-items-v2";
+        const HIST_KEY = "barcode-history-v1";
+        const HIST_TTL = 48 * 60 * 60 * 1000; // 48 ساعة
 
-        // تشغيل الكاميرا والبدء في قراءة الباركود
-        function onScanSuccess(decodedText, decodedResult) {
-            // تشغيل هزاز الهاتف إن وجد لتنبيه المستخدم بالقراءة الناجحة
-            if (navigator.vibrate) navigator.vibrate(100);
+        let activeItems = JSON.parse(localStorage.getItem(KEY)) || [];
+        let historyLogs = JSON.parse(localStorage.getItem(HIST_KEY)) || [];
+        let activeScannerInstance = null;
+
+        // معالجة وإلغاء الملفات القديمة التي تجاوزت الـ 48 ساعة تلقائياً
+        function filterExpiredHistory() {
+            const now = Date.now();
+            historyLogs = historyLogs.filter(e => (now - e.at) < HIST_TTL);
+            localStorage.setItem(HIST_KEY, JSON.stringify(historyLogs));
+        }
+
+        function triggerToast(msg) {
+            const toast = document.getElementById('toast-el');
+            toast.innerText = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3500);
+        }
+
+        // تشغيل كاميرا الهاتف الخلفية للمسح التلقائي والمباشر للباركود
+        function initLiveScanner() {
+            document.getElementById('camera-status-text').innerText = "جاري الاتصال بـ الكاميرا الخلفية للمسح...";
+            activeScannerInstance = new Html5Qrcode("reader");
             
-            document.getElementById('barcode-input').value = decodedText;
-            document.getElementById('quantity-input').focus();
-        }
-
-        function onScanFailure(error) {
-            // يمكن تجاهل الأخطاء المستمرة أثناء البحث عن باركود في الكاميرا
-        }
-
-        let html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader", { fps: 10, qrbox: {width: 250, height: 150} }, /* false */);
-        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-
-        // إضافة مادة جديدة للجرد
-        function addItem() {
-            const barcode = document.getElementById('barcode-input').value.trim();
-            const quantity = parseInt(document.getElementById('quantity-input').value);
-
-            if (!barcode) {
-                alert('الرجاء قراءة الباركود أولاً باستخدام الكاميرا!');
-                return;
-            }
-            if (isNaN(quantity) || quantity <= 0) {
-                alert('الرجاء إدخال كمية صالحة!');
-                return;
-            }
-
-            const time = new Date().toLocaleString('ar-EG');
-            
-            // التحقق إذا كان الباركود موجوداً مسبقاً لزيادة الكمية أو إضافة سطر جديد
-            const existingItem = inventory.find(item => item.barcode === barcode);
-            if (existingItem) {
-                existingItem.quantity += quantity;
-                existingItem.time = time;
-            } else {
-                inventory.push({ barcode, quantity, time });
-            }
-
-            saveAndRefresh();
-            
-            // إعادة تهيئة الحقول المخصصة للإدخال
-            document.getElementById('barcode-input').value = '';
-            document.getElementById('quantity-input').value = '1';
-        }
-
-        // حذف عنصر محدد
-        function deleteItem(index) {
-            if(confirm("هل أنت متأكد من حذف هذا العنصر؟")) {
-                inventory.splice(index, 1);
-                saveAndRefresh();
-            }
-        }
-
-        // مسح كافة البيانات
-        function clearAllData() {
-            if(confirm("تحذير: سيتم مسح كافة البيانات المجرودة بشكل نهائي!")) {
-                inventory = [];
-                saveAndRefresh();
-            }
-        }
-
-        // حفظ البيانات في ذاكرة المتصفح وتحديث الجدول
-        function saveAndRefresh() {
-            localStorage.setItem('inventory', JSON.stringify(inventory));
-            renderTable();
-        }
-
-        // عرض البيانات داخل الجدول
-        function renderTable() {
-            const tbody = document.getElementById('inventory-table-body');
-            tbody.innerHTML = '';
-            
-            inventory.forEach((item, index) => {
-                const row = `<tr>
-                    <td>${item.barcode}</td>
-                    <td>${item.quantity}</td>
-                    <td>${item.time}</td>
-                    <td><button class="delete-btn" onclick="deleteItem(${index})">حذف</button></td>
-                </tr>`;
-                tbody.innerHTML += row;
-            });
-        }
-
-        // تصدير البيانات إلى ملف Excel (CSV)
-        function exportToCSV() {
-            if (inventory.length === 0) {
-                alert('لا توجد بيانات لتصديرها!');
-                return;
-            }
-            let csvContent = "\uFEFF"; // لدعم اللغة العربية في إكسل
-            csvContent += "الباركود,الكمية,الوقت\n";
-            
-            inventory.forEach(item => {
-                csvContent += `"${item.barcode}","${item.quantity}","${item.time}"\n`;
-            });
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `جرد_${new Date().toISOString().slice(0,10)}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        // تشغيل الجدول عند فتح التطبيق لأول مرة
-        renderTable();
-    </script>
-</body>
-</html>
+            activeScannerInstance.start(
+                { facingMode: "environment" },
+                { fps: 15, qrbox: { width: 260, height: 160 } },
+                (decodedText) => {
+                    if (navigator.vibrate) navigator.vibrate(80);
+                    document.getElementById('barcode-input').value = decodedText;
+                    checkDuplicateInput(decodedText);
+                    document.getElementById('quantity-input').focus();
+                },
+                () => { /* البحث مستمر تلقائياً */ }
+            ).then(() => {
+                document.getElementById('start-btn').innerText = "🔄 إعادة تشغيل المسح الحي";
+            }).catch(() => {
