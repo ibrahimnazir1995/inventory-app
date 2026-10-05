@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تطبيق الجرد المبسط</title>
+    <!-- استدعاء مكتبة قراءة الباركود عن طريق الكاميرا -->
+    <script src="https://unpkg.com"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; text-align: center; background-color: #f4f4f9; color: #333; }
+        #reader { width: 100%; max-width: 500px; margin: auto; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .form-group { margin: 20px 0; }
+        input, button { padding: 12px; font-size: 16px; margin: 5px; border-radius: 5px; border: 1px solid #ccc; width: 80%; max-width: 300px; }
+        button { background-color: #28a745; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #218838; }
+        table { width: 100%; max-width: 600px; margin: 20px auto; border-collapse: collapse; background: white; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background-color: #007bff; color: white; }
+        .delete-btn { background-color: #dc3545; padding: 5px 10px; font-size: 14px; }
+        .delete-btn:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+
+    <h1>📦 نظام الجرد المبسط</h1>
+    
+    <!-- منطقة كاميرا قراءة الباركود -->
+    <div id="reader"></div>
+
+    <!-- نموذج إدخال البيانات -->
+    <div class="form-group">
+        <input type="text" id="barcode-input" placeholder="الباركود المقروء سيظهر هنا" readonly>
+        <br>
+        <input type="number" id="quantity-input" placeholder="أدخل الكمية" min="1" value="1">
+        <br>
+        <button onclick="addItem()">إضافة إلى الجرد</button>
+    </div>
+
+    <hr>
+
+    <!-- جدول عرض المواد المجرودة -->
+    <h2>قائمة المواد المجرودة</h2>
+    <button onclick="exportToCSV()" style="background-color: #17a2b8; width: auto;">📥 تحميل كملف Excel (CSV)</button>
+    <button onclick="clearAllData()" style="background-color: #6c757d; width: auto; margin-right: 10px;">🗑️ مسح كل البيانات</button>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>الباركود</th>
+                <th>الكمية</th>
+                <th>الوقت</th>
+                <th>إجراء</th>
+            </tr>
+        </thead>
+        <tbody id="inventory-table-body">
+            <!-- البيانات ستظهر هنا ديناميكياً -->
+        </tbody>
+    </table>
+
+    <script>
+        let inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+
+        // تشغيل الكاميرا والبدء في قراءة الباركود
+        function onScanSuccess(decodedText, decodedResult) {
+            // تشغيل هزاز الهاتف إن وجد لتنبيه المستخدم بالقراءة الناجحة
+            if (navigator.vibrate) navigator.vibrate(100);
+            
+            document.getElementById('barcode-input').value = decodedText;
+            document.getElementById('quantity-input').focus();
+        }
+
+        function onScanFailure(error) {
+            // يمكن تجاهل الأخطاء المستمرة أثناء البحث عن باركود في الكاميرا
+        }
+
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: {width: 250, height: 150} }, /* false */);
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+
+        // إضافة مادة جديدة للجرد
+        function addItem() {
+            const barcode = document.getElementById('barcode-input').value.trim();
+            const quantity = parseInt(document.getElementById('quantity-input').value);
+
+            if (!barcode) {
+                alert('الرجاء قراءة الباركود أولاً باستخدام الكاميرا!');
+                return;
+            }
+            if (isNaN(quantity) || quantity <= 0) {
+                alert('الرجاء إدخال كمية صالحة!');
+                return;
+            }
+
+            const time = new Date().toLocaleString('ar-EG');
+            
+            // التحقق إذا كان الباركود موجوداً مسبقاً لزيادة الكمية أو إضافة سطر جديد
+            const existingItem = inventory.find(item => item.barcode === barcode);
+            if (existingItem) {
+                existingItem.quantity += quantity;
+                existingItem.time = time;
+            } else {
+                inventory.push({ barcode, quantity, time });
+            }
+
+            saveAndRefresh();
+            
+            // إعادة تهيئة الحقول المخصصة للإدخال
+            document.getElementById('barcode-input').value = '';
+            document.getElementById('quantity-input').value = '1';
+        }
+
+        // حذف عنصر محدد
+        function deleteItem(index) {
+            if(confirm("هل أنت متأكد من حذف هذا العنصر؟")) {
+                inventory.splice(index, 1);
+                saveAndRefresh();
+            }
+        }
+
+        // مسح كافة البيانات
+        function clearAllData() {
+            if(confirm("تحذير: سيتم مسح كافة البيانات المجرودة بشكل نهائي!")) {
+                inventory = [];
+                saveAndRefresh();
+            }
+        }
+
+        // حفظ البيانات في ذاكرة المتصفح وتحديث الجدول
+        function saveAndRefresh() {
+            localStorage.setItem('inventory', JSON.stringify(inventory));
+            renderTable();
+        }
+
+        // عرض البيانات داخل الجدول
+        function renderTable() {
+            const tbody = document.getElementById('inventory-table-body');
+            tbody.innerHTML = '';
+            
+            inventory.forEach((item, index) => {
+                const row = `<tr>
+                    <td>${item.barcode}</td>
+                    <td>${item.quantity}</td>
+                    <td>${item.time}</td>
+                    <td><button class="delete-btn" onclick="deleteItem(${index})">حذف</button></td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        }
+
+        // تصدير البيانات إلى ملف Excel (CSV)
+        function exportToCSV() {
+            if (inventory.length === 0) {
+                alert('لا توجد بيانات لتصديرها!');
+                return;
+            }
+            let csvContent = "\uFEFF"; // لدعم اللغة العربية في إكسل
+            csvContent += "الباركود,الكمية,الوقت\n";
+            
+            inventory.forEach(item => {
+                csvContent += `"${item.barcode}","${item.quantity}","${item.time}"\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `جرد_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // تشغيل الجدول عند فتح التطبيق لأول مرة
+        renderTable();
+    </script>
+</body>
+</html>
